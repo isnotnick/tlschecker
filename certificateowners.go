@@ -1,4 +1,4 @@
-package utils
+package tlschecker
 
 // Mapping of issuing CA/intermediate hash to 'owner' - based on CCADB data (from crt.sh)
 // SELECT DISTINCT ON (encode(cert_sha256::bytea, 'hex')) encode(cert_sha256::bytea, 'hex'), included_certificate_owner FROM ccadb_certificate WHERE included_certificate_owner IS NOT NULL;
