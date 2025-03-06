@@ -1,4 +1,4 @@
-package certchecker
+package tlschecker
 
 // EV policy OIDs - extracted from Chrome EV issuer OIDs - current as of 27/2/18
 // Uses: https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/chrome_root_store
