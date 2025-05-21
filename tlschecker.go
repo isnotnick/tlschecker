@@ -2,6 +2,7 @@ package tlschecker
 
 import (
 	_ "bytes"
+	"context"
 	"crypto/dsa"
 	"crypto/ecdsa"
 	"crypto/rsa"
@@ -12,10 +13,9 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 	"fmt"
-	_ "io"
-	"io/ioutil"
 	"net"
 	"net/http"
+	"os"
 	"regexp"
 	_ "strconv"
 	"strings"
@@ -24,14 +24,17 @@ import (
 	"github.com/bogdanovich/dns_resolver"
 	"github.com/domainr/dnsr"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
+	"golang.org/x/net/http2"
+
+	utls "github.com/refraction-networking/utls"
 )
 
 // Global regular expressions
 var (
-	reg             *regexp.Regexp
-	timeoutSecs     time.Duration = 3 * time.Second
-	timeoutDeadline time.Duration = 3 * time.Second
-	connRetry       int           = 2
+	reg *regexp.Regexp
+	//timeoutS time.Duration = 3 * time.Second
+	//timeoutDeadline time.Duration = 3 * time.Second
+	//connRetry       int           = 2
 )
 
 // Trust stores
@@ -43,25 +46,25 @@ var (
 
 // Trust store files
 var (
-	mozFile   string = "truststores/Mozilla-PEM-13112023.pem"
-	msFile    string = "truststores/MS-PEM-13112023.pem"
-	appleFile string = "truststores/Apple-PEM-13112023.pem"
+	mozFile   string = "truststores/Mozilla-PEM-06032025.pem"
+	msFile    string = "truststores/MS-PEM-06032025.pem"
+	appleFile string = "truststores/Apple-PEM-06032025.pem"
 )
 
 func init() {
 	//	Compile regular expressions for IP-address check and HTTP-Header server-token parsing
-	reg = regexp.MustCompile("[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+")
+	reg = regexp.MustCompile(`[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+`)
 
 	//	Load the root stores from the PEM files
-	mozCerts, _ := ioutil.ReadFile(mozFile)
+	mozCerts, _ := os.ReadFile(mozFile)
 	mozStore = x509.NewCertPool()
 	mozStore.AppendCertsFromPEM(mozCerts)
 
-	appleCerts, _ := ioutil.ReadFile(appleFile)
+	appleCerts, _ := os.ReadFile(appleFile)
 	appleStore = x509.NewCertPool()
 	appleStore.AppendCertsFromPEM(appleCerts)
 
-	msCerts, _ := ioutil.ReadFile(msFile)
+	msCerts, _ := os.ReadFile(msFile)
 	msStore = x509.NewCertPool()
 	msStore.AppendCertsFromPEM(msCerts)
 }
@@ -340,7 +343,7 @@ func CheckCertificate(address string) CertResult {
 	//
 	// Disable normal certificate validation checking, attempt TLS connection to host - also use 'servername' to support SNI
 	//	Ordering of ciphersuites set here (rather than Go defaults) in an effort to seem more 'browserlike'
-	tlsConfig := tls.Config{
+	/*tlsConfig := tls.Config{
 		ServerName:         domainName,
 		InsecureSkipVerify: true,
 		CipherSuites: []uint16{
@@ -351,7 +354,6 @@ func CheckCertificate(address string) CertResult {
 	}
 	var conn *tls.Conn
 	var err error
-
 	tr := &http.Transport{
 		DialTLS: func(network, addr string) (net.Conn, error) {
 			conn, err = tls.Dial("tcp", finalConnection, &tlsConfig)
@@ -362,11 +364,97 @@ func CheckCertificate(address string) CertResult {
 	}
 	client := &http.Client{Transport: tr}
 	response, err := client.Get("https://" + domainName + "/")
+		//-----
+		var conn *utls.Conn
 
+		tr := &http.Transport{
+			DialTLS: func(network, addr string) (net.Conn, error) {
+				// Connect to the server over TCP
+				tcpConn, err := net.Dial("tcp", finalConnection)
+				if err != nil {
+					return nil, err
+				}
+
+				// Create a uTLS connection with Chrome's fingerprint
+				config := &utls.Config{
+					ServerName:         domainName,
+					InsecureSkipVerify: true,
+					RootCAs:            x509.NewCertPool(),
+				}
+
+				// Use Chrome's ClientHelloID to mimic Chrome browser
+				conn := utls.UClient(tcpConn, config, utls.HelloRandomized)
+
+				// Start TLS handshake
+				if err = conn.Handshake(); err != nil {
+					tcpConn.Close()
+					return nil, err
+				}
+
+				return conn, nil
+			},
+			TLSHandshakeTimeout:   2 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+		}
+		//	-	-	-	-	-
+		client := &http.Client{Transport: tr}
+		response, err := client.Get("https://" + domainName + "/")
+
+		var conn *utls.Conn
+		dialer := &utls.Dialer{
+			Config: &utls.Config{
+				ServerName:         domainName,
+				InsecureSkipVerify: true, // Warning: skips certificate verification
+			},
+		}
+
+		// Create HTTP transport with our custom uTLS dialer
+		tr := &http.Transport{
+			DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				conn, err := dialer.Dial(network, finalConnection)
+				if err != nil {
+					return nil, err
+				}
+				return conn, nil
+			},
+			TLSHandshakeTimeout:   2 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+		}
+
+		// Create HTTP client
+		client := &http.Client{
+			Transport: tr,
+			Timeout:   30 * time.Second,
+		}
+
+		// Make the request
+		response, err := client.Get("https://" + domainName + "/")*/
+
+	//	-	-	-	-	-
+	//	New new verion of TLS client using utls to avoid fingerprinting, and HTTP2 where necessary
+	client, conn, err := CustomHTTPClient(finalConnection)
 	if err != nil {
-		thisCertificate.ErrorMessage = "Failed TCP connection / Connection refused"
+		thisCertificate.ErrorMessage = "Error creating TLS HTTP client" + err.Error()
 		return thisCertificate
 	}
+	req, err := http.NewRequest("GET", "https://"+domainName, nil)
+	if err != nil {
+		thisCertificate.ErrorMessage = "Error making HTTP request" + err.Error()
+		return thisCertificate
+	}
+	response, err := client.Do(req)
+	if err != nil {
+		thisCertificate.ErrorMessage = "Error making HTTP request" + err.Error()
+		return thisCertificate
+	}
+	defer response.Body.Close()
+
+	//	-	-	-	-	-
+
+	/*if err != nil {
+		thisCertificate.ErrorMessage = "Failed TCP connection / Connection refused" + err.Error()
+		return thisCertificate
+	}*/
 
 	ipConnTime := time.Now()
 
@@ -386,6 +474,11 @@ func CheckCertificate(address string) CertResult {
 		thisCertificate.TLSVersion = "TLS 1.3 supported"
 	}
 
+	//	Log the OCSP response (in base64) if we are given one
+	if len(conn.OCSPResponse()) != 0 {
+		thisCertificate.OCSPStaple = base64.StdEncoding.EncodeToString(conn.OCSPResponse())
+	}
+
 	//	HTTP headers, separating out servertype
 	var httpHeaders strings.Builder
 	thisCertificate.ServerType = response.Header.Get("Server")
@@ -401,11 +494,6 @@ func CheckCertificate(address string) CertResult {
 	defer response.Body.Close()
 
 	httpHeaderTime := time.Now()
-
-	//	Log the OCSP response (in base64) if we are given one
-	if len(conn.OCSPResponse()) != 0 {
-		thisCertificate.OCSPStaple = base64.StdEncoding.EncodeToString(conn.OCSPResponse())
-	}
 
 	defer conn.Close()
 
@@ -647,4 +735,101 @@ func CheckCertificate(address string) CertResult {
 	thisCertificate.ScanTimings = scanTimings
 
 	return thisCertificate
+}
+
+// CustomHTTPClient creates an HTTP client with uTLS for HTTP/1.1 or HTTP/2
+func CustomHTTPClient(domainName string) (*http.Client, *utls.UConn, error) {
+	// Client for collecting TLS connection state
+	var savedConn *utls.UConn
+
+	// Create the dialer for both HTTP/1.1 and HTTP/2 clients
+	dialer := &net.Dialer{
+		Timeout:   3 * time.Second,
+		KeepAlive: 3 * time.Second,
+	}
+
+	// Create a function to establish a uTLS connection
+	dialTLS := func(ctx context.Context, network, addr string) (net.Conn, error) {
+		// Standard TCP connection
+		tcpConn, err := dialer.DialContext(ctx, network, addr)
+		if err != nil {
+			return nil, err
+		}
+
+		// Parse server host and port
+		serverName := addr
+		if host, _, err := net.SplitHostPort(addr); err == nil {
+			serverName = host
+		}
+
+		// Create uTLS config
+		config := &utls.Config{
+			ServerName:         serverName,
+			InsecureSkipVerify: true,
+			NextProtos:         []string{"h2", "http/1.1"},
+		}
+
+		// Create uTLS client connection
+		uTLSConn := utls.UClient(tcpConn, config, utls.HelloChrome_Auto)
+
+		// Perform handshake
+		if err := uTLSConn.HandshakeContext(ctx); err != nil {
+			tcpConn.Close()
+			return nil, fmt.Errorf("uTLS handshake failed: %v", err)
+		}
+
+		// Save the connection for later state access
+		savedConn = uTLSConn
+
+		return uTLSConn, nil
+	}
+
+	// First check if server supports HTTP/2
+	// We need to do a probe connection to determine this
+	probeConn, err := dialTLS(context.Background(), "tcp", domainName)
+	if err != nil {
+		return nil, nil, fmt.Errorf("probe connection failed: %v", err)
+	}
+	defer probeConn.Close()
+
+	// Get the ALPN protocol that was negotiated
+	uTLSConn, ok := probeConn.(*utls.UConn)
+	if !ok {
+		return nil, nil, fmt.Errorf("failed to cast probe connection to uTLS connection")
+	}
+
+	// Get the negotiated protocol
+	negotiatedProtocol := uTLSConn.ConnectionState().NegotiatedProtocol
+
+	// Create HTTP client based on negotiated protocol
+	if negotiatedProtocol == "h2" {
+		// Create HTTP/2 client
+		h2Transport := &http2.Transport{
+			DialTLS: func(network, addr string, cfg *tls.Config) (net.Conn, error) {
+				return dialTLS(context.Background(), network, addr)
+			},
+		}
+
+		client := &http.Client{
+			Transport: h2Transport,
+			Timeout:   30 * time.Second,
+		}
+
+		return client, savedConn, nil
+	} else {
+		// Create HTTP/1.1 client
+		h1Transport := &http.Transport{
+			DialTLSContext:      dialTLS,
+			TLSHandshakeTimeout: 10 * time.Second,
+			MaxIdleConns:        100,
+			IdleConnTimeout:     90 * time.Second,
+		}
+
+		client := &http.Client{
+			Transport: h1Transport,
+			Timeout:   30 * time.Second,
+		}
+
+		return client, savedConn, nil
+	}
 }

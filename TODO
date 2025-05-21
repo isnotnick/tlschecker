@@ -1,0 +1,8 @@
+* utls (on/off?)
+* JSON of each cert in chain
+* Check each non-leaf for trust store?
+* Format non-cert stuff better
+* Goroutines for DNS lookup etc?
+* Threading
+* Threaded scanner
+* Redis or other cache - maybe just HTML results with aggressive CF caching?
