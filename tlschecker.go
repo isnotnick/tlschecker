@@ -432,7 +432,7 @@ func CheckCertificate(address string) CertResult {
 
 	//	-	-	-	-	-
 	//	New new verion of TLS client using utls to avoid fingerprinting, and HTTP2 where necessary
-	client, conn, err := CustomHTTPClient(finalConnection)
+	client, conn, err := CustomHTTPClient(domainName, finalConnection)
 	if err != nil {
 		thisCertificate.ErrorMessage = "Error creating TLS HTTP client" + err.Error()
 		return thisCertificate
@@ -738,7 +738,7 @@ func CheckCertificate(address string) CertResult {
 }
 
 // CustomHTTPClient creates an HTTP client with uTLS for HTTP/1.1 or HTTP/2
-func CustomHTTPClient(domainName string) (*http.Client, *utls.UConn, error) {
+func CustomHTTPClient(domainName string, ipAndPort string) (*http.Client, *utls.UConn, error) {
 	// Client for collecting TLS connection state
 	var savedConn *utls.UConn
 
@@ -750,27 +750,25 @@ func CustomHTTPClient(domainName string) (*http.Client, *utls.UConn, error) {
 
 	// Create a function to establish a uTLS connection
 	dialTLS := func(ctx context.Context, network, addr string) (net.Conn, error) {
+		// Split the FQDN and resolved IP/Port group
+		nameComponents := strings.Split(addr, "?")
+
 		// Standard TCP connection
-		tcpConn, err := dialer.DialContext(ctx, network, addr)
+		tcpConn, err := dialer.DialContext(ctx, network, nameComponents[1])
 		if err != nil {
 			return nil, err
 		}
 
-		// Parse server host and port
-		serverName := addr
-		if host, _, err := net.SplitHostPort(addr); err == nil {
-			serverName = host
-		}
-
 		// Create uTLS config
 		config := &utls.Config{
-			ServerName:         serverName,
+			ServerName:         nameComponents[0],
 			InsecureSkipVerify: true,
 			NextProtos:         []string{"h2", "http/1.1"},
 		}
 
 		// Create uTLS client connection
-		uTLSConn := utls.UClient(tcpConn, config, utls.HelloChrome_Auto)
+		//uTLSConn := utls.UClient(tcpConn, config, utls.HelloIOS_11_1)
+		uTLSConn := utls.UClient(tcpConn, config, utls.HelloFirefox_55)
 
 		// Perform handshake
 		if err := uTLSConn.HandshakeContext(ctx); err != nil {
@@ -786,7 +784,7 @@ func CustomHTTPClient(domainName string) (*http.Client, *utls.UConn, error) {
 
 	// First check if server supports HTTP/2
 	// We need to do a probe connection to determine this
-	probeConn, err := dialTLS(context.Background(), "tcp", domainName)
+	probeConn, err := dialTLS(context.Background(), "tcp", domainName+"?"+ipAndPort)
 	if err != nil {
 		return nil, nil, fmt.Errorf("probe connection failed: %v", err)
 	}
@@ -806,7 +804,7 @@ func CustomHTTPClient(domainName string) (*http.Client, *utls.UConn, error) {
 		// Create HTTP/2 client
 		h2Transport := &http2.Transport{
 			DialTLS: func(network, addr string, cfg *tls.Config) (net.Conn, error) {
-				return dialTLS(context.Background(), network, addr)
+				return dialTLS(context.Background(), network, domainName+"?"+ipAndPort)
 			},
 		}
 
