@@ -1,4 +1,4 @@
-module tlschecker
+module github.com/isnotnick/tlschecker
 
 go 1.24.1
 
