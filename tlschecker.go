@@ -310,19 +310,21 @@ func CheckCertificate(address string) CertResult {
 	thisCertificate.HostName = domainName
 
 	//	Additional DNS lookups
+	//	If the hostname starts www., trim that, otherwise leave it
+	domainName = strings.TrimPrefix(domainName, "www.")
 	r := dnsr.New(10000)
 	var caaRecords, mxRecords, nsRecords, ptrRecords strings.Builder
-	for _, rr := range r.Resolve(thisCertificate.HostName, "CAA") {
+	for _, rr := range r.Resolve(domainName, "CAA") {
 		if rr.Type == "CAA" {
 			caaRecords.WriteString(rr.Value + ",")
 		}
 	}
-	for _, rr := range r.Resolve(thisCertificate.HostName, "MX") {
+	for _, rr := range r.Resolve(domainName, "MX") {
 		if rr.Type == "MX" {
 			mxRecords.WriteString(rr.Value + ",")
 		}
 	}
-	for _, rr := range r.Resolve(thisCertificate.HostName, "NS") {
+	for _, rr := range r.Resolve(domainName, "NS") {
 		if rr.Type == "NS" {
 			nsRecords.WriteString(rr.Value + ",")
 		}
@@ -811,6 +813,9 @@ func CustomHTTPClient(domainName string, ipAndPort string) (*http.Client, *utls.
 		client := &http.Client{
 			Transport: h2Transport,
 			Timeout:   30 * time.Second,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
 		}
 
 		return client, savedConn, nil
@@ -826,6 +831,9 @@ func CustomHTTPClient(domainName string, ipAndPort string) (*http.Client, *utls.
 		client := &http.Client{
 			Transport: h1Transport,
 			Timeout:   30 * time.Second,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
 		}
 
 		return client, savedConn, nil
