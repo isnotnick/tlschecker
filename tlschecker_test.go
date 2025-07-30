@@ -7,7 +7,7 @@ import (
 
 func TestSingleCertCheck(t *testing.T) {
 	//certificatechecker.StoreSummaries()
-	var certTest CertResult = CheckCertificate("sectigo.com")
+	var certTest CertResult = CheckCertificate("blog.cloudflare.com")
 	PrettyPrint(certTest)
 }
 

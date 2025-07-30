@@ -39,16 +39,18 @@ var (
 
 // Trust stores
 var (
-	mozStore   *x509.CertPool
-	msStore    *x509.CertPool
-	appleStore *x509.CertPool
+	mozStore    *x509.CertPool
+	msStore     *x509.CertPool
+	appleStore  *x509.CertPool
+	chromeStore *x509.CertPool
 )
 
 // Trust store files
 var (
-	mozFile   string = "truststores/Mozilla-PEM-06032025.pem"
-	msFile    string = "truststores/MS-PEM-06032025.pem"
-	appleFile string = "truststores/Apple-PEM-06032025.pem"
+	mozFile    string = "truststores/Mozilla-PEM-30072025.pem"
+	msFile     string = "truststores/MS-PEM-30072025.pem"
+	appleFile  string = "truststores/Apple-PEM-30072025.pem"
+	chromeFile string = "truststores/Chrome-PEM-30072025.pem"
 )
 
 func init() {
@@ -67,6 +69,10 @@ func init() {
 	msCerts, _ := os.ReadFile(msFile)
 	msStore = x509.NewCertPool()
 	msStore.AppendCertsFromPEM(msCerts)
+
+	chromeCerts, _ := os.ReadFile(chromeFile)
+	chromeStore = x509.NewCertPool()
+	chromeStore.AppendCertsFromPEM(chromeCerts)
 }
 
 // - - - - -
@@ -137,9 +143,10 @@ type IssuerInfo struct {
 }
 
 type TrustInfo struct {
-	AppleTrust string `json:"appletrust"`
-	MozTrust   string `json:"moztrust"`
-	MSTrust    string `json:"mstrust"`
+	AppleTrust  string `json:"appletrust"`
+	MozTrust    string `json:"moztrust"`
+	MSTrust     string `json:"mstrust"`
+	GoogleTrust string `json:"googletrust"`
 }
 
 type SubjectInfo struct {
@@ -230,9 +237,10 @@ type CertResult struct {
 
 	ScanTimings string
 
-	MozTrust   string
-	MSTrust    string
-	AppleTrust string
+	MozTrust    string
+	MSTrust     string
+	AppleTrust  string
+	GoogleTrust string
 
 	CertificateOwner string
 
@@ -657,6 +665,18 @@ func CheckCertificate(address string) CertResult {
 			thisCertificate.AppleTrust = "N"
 		} else {
 			thisCertificate.AppleTrust = "Y"
+		}
+	}
+	if chromeStore != nil {
+		opts := x509.VerifyOptions{
+			Roots:         chromeStore,
+			Intermediates: providedIntermediates,
+		}
+
+		if _, err := trustTestCert.Verify(opts); err != nil {
+			thisCertificate.GoogleTrust = "N"
+		} else {
+			thisCertificate.GoogleTrust = "Y"
 		}
 	}
 
