@@ -9,13 +9,13 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
+	"embed"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/pem"
 	"fmt"
 	"net"
 	"net/http"
-	"os"
 	"regexp"
 	_ "strconv"
 	"strings"
@@ -28,6 +28,9 @@ import (
 
 	utls "github.com/refraction-networking/utls"
 )
+
+//go:embed truststores/*.pem
+var trustStoresDir embed.FS
 
 // Global regular expressions
 var (
@@ -46,11 +49,19 @@ var (
 )
 
 // Trust store files
+/*
 var (
 	mozFile    string = "truststores/Mozilla-PEM-30072025.pem"
 	msFile     string = "truststores/MS-PEM-30072025.pem"
 	appleFile  string = "truststores/Apple-PEM-30072025.pem"
 	chromeFile string = "truststores/Chrome-PEM-30072025.pem"
+)
+*/
+var (
+	mozCerts 	*[]byte
+	msCerts  	*[]byte
+	appleCerts 	*[]byte
+	chromeCerts *[]byte
 )
 
 func init() {
@@ -58,19 +69,20 @@ func init() {
 	reg = regexp.MustCompile(`[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+`)
 
 	//	Load the root stores from the PEM files
-	mozCerts, _ := os.ReadFile(mozFile)
+	//mozCerts, _ := os.ReadFile(mozFile)
+	mozCerts, _ := trustStoresDir.ReadFile("truststores/Mozilla-PEM-30072025.pem")
 	mozStore = x509.NewCertPool()
 	mozStore.AppendCertsFromPEM(mozCerts)
 
-	appleCerts, _ := os.ReadFile(appleFile)
+	appleCerts, _ := trustStoresDir.ReadFile("truststores/Apple-PEM-30072025.pem")
 	appleStore = x509.NewCertPool()
 	appleStore.AppendCertsFromPEM(appleCerts)
 
-	msCerts, _ := os.ReadFile(msFile)
+	msCerts, _ := trustStoresDir.ReadFile("truststores/MS-PEM-30072025.pem")
 	msStore = x509.NewCertPool()
 	msStore.AppendCertsFromPEM(msCerts)
 
-	chromeCerts, _ := os.ReadFile(chromeFile)
+	chromeCerts, _ := trustStoresDir.ReadFile("truststores/Chrome-PEM-30072025.pem")
 	chromeStore = x509.NewCertPool()
 	chromeStore.AppendCertsFromPEM(chromeCerts)
 }
@@ -249,10 +261,13 @@ type CertResult struct {
 	ErrorMessage string
 }
 
-func StoreSummaries() {
-	fmt.Printf("Apple Root Store loaded from [%v] - number of certs : %v\n", appleFile, len(appleStore.Subjects()))
-	fmt.Printf("Microsoft Root Store loaded from [%v] - number of certs : %v\n", msFile, len(msStore.Subjects()))
-	fmt.Printf("Moz Root Store loaded from [%v] - number of certs : %v\n", mozFile, len(mozStore.Subjects()))
+func StoreSummaries() string {
+	var storeSummary string
+	storeSummary = fmt.Sprintf("Apple Root Store loaded from [%v] - number of certs : %v\n", appleCerts, len(appleStore.Subjects()))
+	storeSummary += fmt.Sprintf("Microsoft Root Store loaded from [%v] - number of certs : %v\n", msCerts, len(msStore.Subjects()))
+	storeSummary += fmt.Sprintf("Mozilla Root Store loaded from [%v] - number of certs : %v\n", mozCerts, len(mozStore.Subjects()))
+	storeSummary += fmt.Sprintf("Chrome Root Store loaded from [%v] - number of certs : %v\n", chromeCerts, len(mozStore.Subjects()))
+	return storeSummary
 }
 
 func CheckCertificate(address string) CertResult {
