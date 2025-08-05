@@ -49,18 +49,22 @@ var (
 )
 
 // Trust store files
+var storeUpdate = "30-June-2025"
+
 /*
 var (
+
 	mozFile    string = "truststores/Mozilla-PEM-30072025.pem"
 	msFile     string = "truststores/MS-PEM-30072025.pem"
 	appleFile  string = "truststores/Apple-PEM-30072025.pem"
 	chromeFile string = "truststores/Chrome-PEM-30072025.pem"
+
 )
 */
 var (
-	mozCerts 	*[]byte
-	msCerts  	*[]byte
-	appleCerts 	*[]byte
+	mozCerts    *[]byte
+	msCerts     *[]byte
+	appleCerts  *[]byte
 	chromeCerts *[]byte
 )
 
@@ -263,10 +267,11 @@ type CertResult struct {
 
 func StoreSummaries() string {
 	var storeSummary string
-	storeSummary = fmt.Sprintf("Apple Root Store loaded from [%v] - number of certs : %v\n", appleCerts, len(appleStore.Subjects()))
-	storeSummary += fmt.Sprintf("Microsoft Root Store loaded from [%v] - number of certs : %v\n", msCerts, len(msStore.Subjects()))
-	storeSummary += fmt.Sprintf("Mozilla Root Store loaded from [%v] - number of certs : %v\n", mozCerts, len(mozStore.Subjects()))
-	storeSummary += fmt.Sprintf("Chrome Root Store loaded from [%v] - number of certs : %v\n", chromeCerts, len(mozStore.Subjects()))
+	storeSummary = fmt.Sprintf("Stores updated on: %v\n", storeUpdate)
+	storeSummary += fmt.Sprintf("Apple Root Store: loaded %v certs.\n", len(appleStore.Subjects()))
+	storeSummary += fmt.Sprintf("Microsoft Root Store: %v certs.\n", len(msStore.Subjects()))
+	storeSummary += fmt.Sprintf("Mozilla Root Store: loaded %v certs.\n", len(mozStore.Subjects()))
+	storeSummary += fmt.Sprintf("Chrome Root Store: loaded %v certs.\n", len(mozStore.Subjects()))
 	return storeSummary
 }
 
