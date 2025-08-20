@@ -8,7 +8,8 @@ import (
 
 func TestSingleCertCheck(t *testing.T) {
 	//certificatechecker.StoreSummaries()
-	var certTest CertResult = CheckCertificate("blog.cloudflare.com")
+	var certTest CertResult = CheckCertificate("www.stihl.com")
+	//var certTest CertResult = CheckCertificate("blog.cloudflare.com")
 	PrettyPrint(certTest)
 	var rootStores = StoreSummaries()
 	fmt.Println(rootStores)

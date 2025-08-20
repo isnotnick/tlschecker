@@ -339,20 +339,20 @@ func CheckCertificate(address string) CertResult {
 
 	//	Additional DNS lookups
 	//	If the hostname starts www., trim that, otherwise leave it
-	domainName = strings.TrimPrefix(domainName, "www.")
+	regDomainName := strings.TrimPrefix(domainName, "www.")
 	r := dnsr.New(10000)
 	var caaRecords, mxRecords, nsRecords, ptrRecords strings.Builder
-	for _, rr := range r.Resolve(domainName, "CAA") {
+	for _, rr := range r.Resolve(regDomainName, "CAA") {
 		if rr.Type == "CAA" {
 			caaRecords.WriteString(rr.Value + ",")
 		}
 	}
-	for _, rr := range r.Resolve(domainName, "MX") {
+	for _, rr := range r.Resolve(regDomainName, "MX") {
 		if rr.Type == "MX" {
 			mxRecords.WriteString(rr.Value + ",")
 		}
 	}
-	for _, rr := range r.Resolve(domainName, "NS") {
+	for _, rr := range r.Resolve(regDomainName, "NS") {
 		if rr.Type == "NS" {
 			nsRecords.WriteString(rr.Value + ",")
 		}
@@ -783,6 +783,7 @@ func CheckCertificate(address string) CertResult {
 func CustomHTTPClient(domainName string, ipAndPort string) (*http.Client, *utls.UConn, error) {
 	// Client for collecting TLS connection state
 	var savedConn *utls.UConn
+	var combinedDial = domainName + "?" + ipAndPort
 
 	// Create the dialer for both HTTP/1.1 and HTTP/2 clients
 	dialer := &net.Dialer{
@@ -793,6 +794,7 @@ func CustomHTTPClient(domainName string, ipAndPort string) (*http.Client, *utls.
 	// Create a function to establish a uTLS connection
 	dialTLS := func(ctx context.Context, network, addr string) (net.Conn, error) {
 		// Split the FQDN and resolved IP/Port group
+		//fmt.Println("debug dialTLS: ", addr)
 		nameComponents := strings.Split(addr, "?")
 
 		// Standard TCP connection
@@ -809,8 +811,8 @@ func CustomHTTPClient(domainName string, ipAndPort string) (*http.Client, *utls.
 		}
 
 		// Create uTLS client connection
-		//uTLSConn := utls.UClient(tcpConn, config, utls.HelloIOS_11_1)
-		uTLSConn := utls.UClient(tcpConn, config, utls.HelloFirefox_55)
+		uTLSConn := utls.UClient(tcpConn, config, utls.HelloSafari_Auto)
+		//uTLSConn := utls.UClient(tcpConn, config, utls.HelloFirefox_Auto)
 
 		// Perform handshake
 		if err := uTLSConn.HandshakeContext(ctx); err != nil {
@@ -826,7 +828,7 @@ func CustomHTTPClient(domainName string, ipAndPort string) (*http.Client, *utls.
 
 	// First check if server supports HTTP/2
 	// We need to do a probe connection to determine this
-	probeConn, err := dialTLS(context.Background(), "tcp", domainName+"?"+ipAndPort)
+	probeConn, err := dialTLS(context.Background(), "tcp", combinedDial)
 	if err != nil {
 		return nil, nil, fmt.Errorf("probe connection failed: %v", err)
 	}
@@ -846,7 +848,7 @@ func CustomHTTPClient(domainName string, ipAndPort string) (*http.Client, *utls.
 		// Create HTTP/2 client
 		h2Transport := &http2.Transport{
 			DialTLS: func(network, addr string, cfg *tls.Config) (net.Conn, error) {
-				return dialTLS(context.Background(), network, domainName+"?"+ipAndPort)
+				return dialTLS(context.Background(), network, combinedDial)
 			},
 		}
 
@@ -875,7 +877,42 @@ func CustomHTTPClient(domainName string, ipAndPort string) (*http.Client, *utls.
 				return http.ErrUseLastResponse
 			},
 		}
-
 		return client, savedConn, nil
 	}
+}
+
+func FallbackGetCert(fqdn string) ([]*x509.Certificate, error) {
+	// The address must include the port. For HTTPS, this is typically 443.
+	addr := net.JoinHostPort(fqdn, "443")
+
+	// Create a custom TLS configuration.
+	// InsecureSkipVerify: true is the key part of this configuration. It tells the
+	// client to bypass the normal certificate verification process, which includes
+	// checking the certificate chain against a trusted root CA, verifying the
+	// hostname, and checking the expiry date.
+	//
+	// WARNING: This should ONLY be used for diagnostic tools like this one.
+	// Using this in a production application would create a major security
+	// vulnerability, as it allows for man-in-the-middle attacks.
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: true,
+	}
+
+	// Dial the server using the custom TLS configuration. We set a timeout
+	// to prevent the program from hanging indefinitely.
+	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: 3 * time.Second}, "tcp", addr, tlsConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to %s: %w", addr, err)
+	}
+	// Ensure the connection is closed when the function exits.
+	defer conn.Close()
+
+	// The ConnectionState contains details about the TLS connection,
+	// including the certificates presented by the peer.
+	state := conn.ConnectionState()
+
+	// PeerCertificates is a slice of parsed X.509 certificates.
+	// The first certificate in the slice is the leaf certificate, followed by
+	// any intermediates provided by the server.
+	return state.PeerCertificates, nil
 }
