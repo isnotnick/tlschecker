@@ -795,7 +795,15 @@ func CustomHTTPClient(domainName string, ipAndPort string) (*http.Client, *utls.
 	dialTLS := func(ctx context.Context, network, addr string) (net.Conn, error) {
 		// Split the FQDN and resolved IP/Port group
 		//fmt.Println("debug dialTLS: ", addr)
-		nameComponents := strings.Split(addr, "?")
+
+		var nameComponents []string
+		if strings.Contains(addr, "?") {
+			nameComponents = strings.Split(addr, "?")
+		} else {
+			nameComponentsH1 := strings.Split(addr, ":")
+			nameComponents = append(nameComponents, nameComponentsH1[0])
+			nameComponents = append(nameComponents, addr)
+		}
 
 		// Standard TCP connection
 		tcpConn, err := dialer.DialContext(ctx, network, nameComponents[1])
@@ -846,6 +854,7 @@ func CustomHTTPClient(domainName string, ipAndPort string) (*http.Client, *utls.
 	// Create HTTP client based on negotiated protocol
 	if negotiatedProtocol == "h2" {
 		// Create HTTP/2 client
+		//fmt.Println("HTTP 2 client")
 		h2Transport := &http2.Transport{
 			DialTLS: func(network, addr string, cfg *tls.Config) (net.Conn, error) {
 				return dialTLS(context.Background(), network, combinedDial)
@@ -863,6 +872,7 @@ func CustomHTTPClient(domainName string, ipAndPort string) (*http.Client, *utls.
 		return client, savedConn, nil
 	} else {
 		// Create HTTP/1.1 client
+		//fmt.Println("HTTP 1.1 client")
 		h1Transport := &http.Transport{
 			DialTLSContext:      dialTLS,
 			TLSHandshakeTimeout: 10 * time.Second,
