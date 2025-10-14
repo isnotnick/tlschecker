@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"regexp"
 	_ "strconv"
 	"strings"
@@ -279,6 +280,20 @@ func CheckCertificate(address string) CertResult {
 	// CertPool for the server-provided chain
 	providedIntermediates := x509.NewCertPool()
 
+	//	Input could be a full URI
+	var requestURI string
+	u, err := url.Parse(address)
+	if err == nil {
+		requestURI = u.RequestURI()
+		if requestURI == address {
+			requestURI = ""
+		}
+		if requestURI == "/" {
+			requestURI = ""
+		}
+		address = u.Host
+	}
+
 	//	Some variables and input-cleaning to begin with, and of course the start time marker
 	startTime := int(time.Now().Unix())
 	accurateStartTime := time.Now()
@@ -303,6 +318,9 @@ func CheckCertificate(address string) CertResult {
 	} else {
 		domainName = address
 		port = "443"
+	}
+	if requestURI == port {
+		requestURI = ""
 	}
 	//	PSL
 	thisCertificate.PublicSuffix, _ = publicsuffix.Domain(domainName)
@@ -369,103 +387,14 @@ func CheckCertificate(address string) CertResult {
 
 	dnsLookupTime := time.Now()
 
-	//	New version of TLS connection and HTTP request
-	//
-	// Disable normal certificate validation checking, attempt TLS connection to host - also use 'servername' to support SNI
-	//	Ordering of ciphersuites set here (rather than Go defaults) in an effort to seem more 'browserlike'
-	/*tlsConfig := tls.Config{
-		ServerName:         domainName,
-		InsecureSkipVerify: true,
-		CipherSuites: []uint16{
-			tls.TLS_RSA_WITH_AES_128_GCM_SHA256,
-			tls.TLS_RSA_WITH_AES_256_GCM_SHA384,
-			tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
-		},
-	}
-	var conn *tls.Conn
-	var err error
-	tr := &http.Transport{
-		DialTLS: func(network, addr string) (net.Conn, error) {
-			conn, err = tls.Dial("tcp", finalConnection, &tlsConfig)
-			return conn, err
-		},
-		TLSHandshakeTimeout:   2 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
-	}
-	client := &http.Client{Transport: tr}
-	response, err := client.Get("https://" + domainName + "/")
-		//-----
-		var conn *utls.Conn
-
-		tr := &http.Transport{
-			DialTLS: func(network, addr string) (net.Conn, error) {
-				// Connect to the server over TCP
-				tcpConn, err := net.Dial("tcp", finalConnection)
-				if err != nil {
-					return nil, err
-				}
-
-				// Create a uTLS connection with Chrome's fingerprint
-				config := &utls.Config{
-					ServerName:         domainName,
-					InsecureSkipVerify: true,
-					RootCAs:            x509.NewCertPool(),
-				}
-
-				// Use Chrome's ClientHelloID to mimic Chrome browser
-				conn := utls.UClient(tcpConn, config, utls.HelloRandomized)
-
-				// Start TLS handshake
-				if err = conn.Handshake(); err != nil {
-					tcpConn.Close()
-					return nil, err
-				}
-
-				return conn, nil
-			},
-			TLSHandshakeTimeout:   2 * time.Second,
-			ExpectContinueTimeout: 1 * time.Second,
-		}
-		//	-	-	-	-	-
-		client := &http.Client{Transport: tr}
-		response, err := client.Get("https://" + domainName + "/")
-
-		var conn *utls.Conn
-		dialer := &utls.Dialer{
-			Config: &utls.Config{
-				ServerName:         domainName,
-				InsecureSkipVerify: true, // Warning: skips certificate verification
-			},
-		}
-
-		// Create HTTP transport with our custom uTLS dialer
-		tr := &http.Transport{
-			DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				conn, err := dialer.Dial(network, finalConnection)
-				if err != nil {
-					return nil, err
-				}
-				return conn, nil
-			},
-			TLSHandshakeTimeout:   2 * time.Second,
-			ExpectContinueTimeout: 1 * time.Second,
-		}
-
-		// Create HTTP client
-		client := &http.Client{
-			Transport: tr,
-			Timeout:   30 * time.Second,
-		}
-
-		// Make the request
-		response, err := client.Get("https://" + domainName + "/")*/
-
-	//	-	-	-	-	-
 	//	New new verion of TLS client using utls to avoid fingerprinting, and HTTP2 where necessary
 	client, conn, err := CustomHTTPClient(domainName, finalConnection)
 	if err != nil {
 		thisCertificate.ErrorMessage = "Error creating TLS HTTP client" + err.Error()
 		return thisCertificate
+	}
+	if requestURI != "" {
+		domainName = domainName + requestURI
 	}
 	req, err := http.NewRequest("GET", "https://"+domainName, nil)
 	if err != nil {
@@ -785,6 +714,8 @@ func CustomHTTPClient(domainName string, ipAndPort string) (*http.Client, *utls.
 	var savedConn *utls.UConn
 	var combinedDial = domainName + "?" + ipAndPort
 
+	utls.EnableWeakCiphers()
+
 	// Create the dialer for both HTTP/1.1 and HTTP/2 clients
 	dialer := &net.Dialer{
 		Timeout:   3 * time.Second,
@@ -819,8 +750,29 @@ func CustomHTTPClient(domainName string, ipAndPort string) (*http.Client, *utls.
 		}
 
 		// Create uTLS client connection
-		uTLSConn := utls.UClient(tcpConn, config, utls.HelloSafari_Auto)
+		uTLSConn := utls.UClient(tcpConn, config, utls.HelloChrome_Auto)
+		//uTLSConn := utls.UClient(tcpConn, config, utls.HelloSafari_Auto)
 		//uTLSConn := utls.UClient(tcpConn, config, utls.HelloFirefox_Auto)
+		//----
+		/*
+			cleanHex := `160301014b0100014703032ab68bea7ca19e1c07d6594e26b3c0265079321cc8c987a994c591114e29d08420cd819c68c6483cc85361815c9cab00b62f0f2b432d35ab0a6696b99f25e37fbe003e130213031301c02cc030009fcca9cca8ccaac02bc02f009ec024c028006bc023c0270067c00ac0140039c009c0130033009d009c003d003c0035002f00ff010000c00000001a00180000157777772e616c6d756261736865722e636f6d2e7361000b000403000102000a00160014001d0017001e0019001801000101010201030104002300000005000501000000000016000000170000000d002a0028040305030603080708080809080a080b080408050806040105010601030303010302040205020602002b0009080304030303020301002d00020101003300260024001d002054abd63d1359dfcbe500774b68fa1122ce46575a056bfc3e7f975c95f20d2663`
+
+			// 2. Decode the cleaned hex string into a byte slice.
+			openSSLHello, err := hex.DecodeString(cleanHex)
+			if err != nil {
+				fmt.Printf("Failed to decode hex string: %v", err)
+			}
+			uTLSConn := utls.UClient(&net.TCPConn{}, config, utls.HelloCustom)
+			fingerprinter := &utls.Fingerprinter{}
+			generatedSpec, err := fingerprinter.FingerprintClientHello(openSSLHello)
+			if err != nil {
+				fmt.Printf("Fingerprinting failed: %v", err)
+			}
+			if err := uTLSConn.ApplyPreset(generatedSpec); err != nil {
+				fmt.Printf("Failed to generate spec: %v", err)
+			}
+		*/
+		//----
 
 		// Perform handshake
 		if err := uTLSConn.HandshakeContext(ctx); err != nil {
