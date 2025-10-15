@@ -399,12 +399,12 @@ func CheckCertificate(address string) CertResult {
 	req, err := http.NewRequest("GET", "https://"+domainName, nil)
 	if err != nil {
 		thisCertificate.ErrorMessage = "Error making HTTP request" + err.Error()
-		return thisCertificate
+		//return thisCertificate
 	}
 	response, err := client.Do(req)
 	if err != nil {
 		thisCertificate.ErrorMessage = "Error making HTTP request" + err.Error()
-		return thisCertificate
+		//return thisCertificate
 	}
 	defer response.Body.Close()
 
