@@ -50,7 +50,7 @@ var (
 )
 
 // Trust store files
-var storeUpdate = "30-June-2025"
+var storeUpdate = "7-Nov-2025"
 
 /*
 var (
@@ -75,19 +75,19 @@ func init() {
 
 	//	Load the root stores from the PEM files
 	//mozCerts, _ := os.ReadFile(mozFile)
-	mozCerts, _ := trustStoresDir.ReadFile("truststores/Mozilla-PEM-30072025.pem")
+	mozCerts, _ := trustStoresDir.ReadFile("truststores/Mozilla-PEM-07112025.pem")
 	mozStore = x509.NewCertPool()
 	mozStore.AppendCertsFromPEM(mozCerts)
 
-	appleCerts, _ := trustStoresDir.ReadFile("truststores/Apple-PEM-30072025.pem")
+	appleCerts, _ := trustStoresDir.ReadFile("truststores/Apple-PEM-07112025.pem")
 	appleStore = x509.NewCertPool()
 	appleStore.AppendCertsFromPEM(appleCerts)
 
-	msCerts, _ := trustStoresDir.ReadFile("truststores/MS-PEM-30072025.pem")
+	msCerts, _ := trustStoresDir.ReadFile("truststores/MS-PEM-07112025.pem")
 	msStore = x509.NewCertPool()
 	msStore.AppendCertsFromPEM(msCerts)
 
-	chromeCerts, _ := trustStoresDir.ReadFile("truststores/Chrome-PEM-30072025.pem")
+	chromeCerts, _ := trustStoresDir.ReadFile("truststores/Chrome-PEM-07112025.pem")
 	chromeStore = x509.NewCertPool()
 	chromeStore.AppendCertsFromPEM(chromeCerts)
 }
