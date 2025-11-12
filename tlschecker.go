@@ -280,18 +280,25 @@ func CheckCertificate(address string) CertResult {
 	// CertPool for the server-provided chain
 	providedIntermediates := x509.NewCertPool()
 
-	//	Input could be a full URI
+	//	Input could be a full URI, or include the protocol
 	var requestURI string
-	u, err := url.Parse(address)
-	if err == nil {
-		requestURI = u.RequestURI()
-		if requestURI == address {
-			requestURI = ""
+
+	if strings.Contains(address, "/") {
+		u, err := url.Parse(address)
+		if err == nil {
+			requestURI = u.RequestURI()
+			if requestURI == address {
+				requestURI = ""
+			}
+			if requestURI == "/" {
+				requestURI = ""
+			}
+			if u.Host != address {
+				address = u.Host
+			}
 		}
-		if requestURI == "/" {
-			requestURI = ""
-		}
-		address = u.Host
+	} else {
+		requestURI = ""
 	}
 
 	//	Some variables and input-cleaning to begin with, and of course the start time marker
