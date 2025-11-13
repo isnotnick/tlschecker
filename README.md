@@ -16,3 +16,10 @@ Some features:
 * Fetching of reverse DNS, nameserver, MX and CAA DNS records
 
 Library is also in-use with a simple webserver wrapper at: https://ismycert.com/    
+
+-----
+### Notes
+evissuers.go is manually built from identifiers, usually from Chromium source. EV is largely dead now anyway.
+
+In order to identify the 'owner' of a given CA, I use crt.sh (thanks, Rob!) which in turn is parsing information out of CCADB.org
+The shell script included in the repository here can be run to execute a SQL statement against the postgres database of crt.sh, then add a header/footer to make it a big Golang map. This should be run frequently.
