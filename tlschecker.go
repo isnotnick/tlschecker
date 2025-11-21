@@ -405,14 +405,29 @@ func CheckCertificate(address string) CertResult {
 	}
 	req, err := http.NewRequest("GET", "https://"+domainName, nil)
 	if err != nil {
-		thisCertificate.ErrorMessage = "Error making HTTP request" + err.Error()
+		//thisCertificate.ErrorMessage = "Error making HTTP request" + err.Error()
 		//return thisCertificate
 	}
 	response, err := client.Do(req)
 	if err != nil {
-		thisCertificate.ErrorMessage = "Error making HTTP request" + err.Error()
+		//thisCertificate.ErrorMessage = "Error making HTTP request" + err.Error()
 		//return thisCertificate
+	} else {
+		//	HTTP headers, separating out servertype
+		var httpHeaders strings.Builder
+		thisCertificate.ServerType = response.Header.Get("Server")
+		for httpHeaderName, httpHeaderValues := range response.Header {
+			var httpHeaderValueString strings.Builder
+			for _, httpHeaderValue := range httpHeaderValues {
+				httpHeaderValueString.WriteString(httpHeaderValue)
+			}
+			httpHeaders.WriteString(httpHeaderName + ": " + httpHeaderValueString.String() + ",")
+		}
+		thisCertificate.HTTPHeaders = strings.TrimSuffix(httpHeaders.String(), ",")
+
+		defer response.Body.Close()
 	}
+	httpHeaderTime := time.Now()
 
 	//	-	-	-	-	-
 
@@ -443,22 +458,6 @@ func CheckCertificate(address string) CertResult {
 	if len(conn.OCSPResponse()) != 0 {
 		thisCertificate.OCSPStaple = base64.StdEncoding.EncodeToString(conn.OCSPResponse())
 	}
-
-	//	HTTP headers, separating out servertype
-	var httpHeaders strings.Builder
-	thisCertificate.ServerType = response.Header.Get("Server")
-	for httpHeaderName, httpHeaderValues := range response.Header {
-		var httpHeaderValueString strings.Builder
-		for _, httpHeaderValue := range httpHeaderValues {
-			httpHeaderValueString.WriteString(httpHeaderValue)
-		}
-		httpHeaders.WriteString(httpHeaderName + ": " + httpHeaderValueString.String() + ",")
-	}
-	thisCertificate.HTTPHeaders = strings.TrimSuffix(httpHeaders.String(), ",")
-
-	defer response.Body.Close()
-
-	httpHeaderTime := time.Now()
 
 	defer conn.Close()
 
