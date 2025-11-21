@@ -413,7 +413,6 @@ func CheckCertificate(address string) CertResult {
 		thisCertificate.ErrorMessage = "Error making HTTP request" + err.Error()
 		//return thisCertificate
 	}
-	defer response.Body.Close()
 
 	//	-	-	-	-	-
 
